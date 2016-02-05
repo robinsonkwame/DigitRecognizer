@@ -1,3 +1,7 @@
+# DigitRecongizer training and testing files
+test.csv
+train.csv
+
 # Byte-compiled / optimized / DLL files
 __pycache__/
 *.py[cod]
