@@ -8,38 +8,47 @@
 # see:[1] http://www.cs.berkeley.edu/~malik/papers/BMP-shape.pdf
 # see:[2] https://www.eecs.berkeley.edu/Research/Projects/CS/vision/shape/sc_digits.html
 
+from itertools import cycle
+from multiprocessing import Pool
 from sklearn.metrics.pairwise import euclidean_distances # fast
 from skimage import measure
 import pandas as pd
 import numpy as np
 
-def shape_context(keypoints):
+def _shape_context(args):
+    point, keypoints = args
 
-    # todo: parallelize?
-    for point in keypoints:
-        # see [1], Section 3.1 compute relative vector magnitudes ...
-        pts = keypoints - point
-        rho = euclidean_distances(pts, [[0,0]]) # ... relative to centered point
-        rho = rho/rho.mean() # note: shape is (X, 1)
+    # see [1], Section 3.1 compute relative vector magnitudes ...
+    pts = keypoints - point
+    rho = euclidean_distances(pts, [[0,0]]) # ... relative to centered point
+    rho = rho/rho.mean() # note: shape is (X, 1)
 
-        # Do [1] Section 3.1, construct log-polar histogram
-        # ... first construct the uniform in logpolar bin thresholds
-        #       note: [1] does not parameters for their logpolar binning
-        rho_bins = np.logspace(start= -1.5 * np.e, 
-                               stop = np.log(rho.max()),
-                               num  = 6,
-                               base=  np.e, 
-                               dtype= np.float)
+    # Do [1] Section 3.1, construct log-polar histogram
+    # ... first construct the uniform in logpolar bin thresholds
+    #       note: [1] does not parameters for their logpolar binning
+    rho_bins = np.logspace(start= -1.5 * np.e, 
+                           stop = np.log(rho.max()),
+                           num  = 6,
+                           base=  np.e, 
+                           dtype= np.float)
 
-        # ... similarly for theta, construct uniform linear bin thresholds
-        theta = np.arctan2(pts[:,0], pts[:,1])
-        theta_bins = np.linspace(-np.pi, np.pi, num=12)
+    # ... similarly for theta, construct uniform linear bin thresholds
+    theta = np.arctan2(pts[:,0], pts[:,1])
+    theta_bins = np.linspace(-np.pi, np.pi, num=12)
 
-        # ... histgram2d is our normed log-polar histogram [1] 3.1
-        context_hist = np.histogram2d(rho.reshape(-1),
-                                      theta,
-                                      [rho_bins, theta_bins],
-                                      normed=True)
+    # ... histgram2d is our normed log-polar histogram [1] 3.1
+    context_hist = np.histogram2d(rho.reshape(-1),
+                                  theta,
+                                  [rho_bins, theta_bins],
+                                  normed=True)
+
+    return context_hist[0] # just return normed 2d histogram
+
+def shape_context(keypoints, pool_size=2):
+    my_pool = Pool(processes=pool_size)
+    args = zip(keypoints, cycle([keypoints])) 
+    result = my_pool.map(_shape_context, args)
+    return result
 
 if __name__ == "__main__":
     # %run -i shape_context.py # to access interpreter name space
