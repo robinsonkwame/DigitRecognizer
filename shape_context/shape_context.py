@@ -1,60 +1,69 @@
 # kwame porter robinson
 # kwame@kwamata.com
 #
-# Rough implemention of the log-polar shape context, from
+# Implemention of the log-polar shape context, from
 # Shape Matching and Object Recognition Using Shape Contexts,
 # by S Belongie, J Malik, J Puzicha (2001)
 # 
-# see: http://www.cs.berkeley.edu/~malik/papers/BMP-shape.pdf
-# see https://www.eecs.berkeley.edu/Research/Projects/CS/vision/shape/sc_digits.html
+# see:[1] http://www.cs.berkeley.edu/~malik/papers/BMP-shape.pdf
+# see:[2] https://www.eecs.berkeley.edu/Research/Projects/CS/vision/shape/sc_digits.html
 
-# todo: read in train.csv with pandas
-#       grab set of keypoints 
-#       generate shape context for each point
-#       return as data fram
-#
-#       then we have a bipartite matching problem
-# ?
-# http://code.activestate.com/recipes/123641-hopcroft-karp-bipartite-matching/
-
-from skimage.feature import BRIEF, corner_harris, corner_peaks
-from skimage import io, measure
+from sklearn.metrics.pairwise import euclidean_distances # fast
+from skimage import measure
 import pandas as pd
 import numpy as np
 
-# super simple data flow 'pipeline'
-# open, normalize
-path = '../data/'
-fname = 'train.csv'
-images = pd.read_csv(path+fname, dtype=np.float64)
-images.values[:, 1:] = images.values[:, 1:]/255.0
+def shape_context(keypoints):
 
-# to peek at an image
-# %pylab # exposes numpy, matplotlib into namespace
-# index = 6 # index of image you want to view
-# imshow(images.iloc[index,1:].reshape((28,28)))
+    # todo: parallelize?
+    for point in keypoints:
+        # see [1], Section 3.1 compute relative vector magnitudes ...
+        pts = keypoints - point
+        rho = euclidean_distances(pts, [[0,0]]) # ... relative to centered point
+        rho = rho/rho.mean() # note: shape is (X, 1)
 
-index = 6
-image = images.iloc[index, 1:].reshape((28,28))
+        # Do [1] Section 3.1, construct log-polar histogram
+        # ... first construct the uniform in logpolar bin thresholds
+        #       note: [1] does not parameters for their logpolar binning
+        rho_bins = np.logspace(start= -1.5 * np.e, 
+                               stop = np.log(rho.max()),
+                               num  = 6,
+                               base=  np.e, 
+                               dtype= np.float)
 
-# extract contour points from an image, include all found contours
-level = 0.8
-keypoints = measure.find_contours(image, level=level)
-keypoints = np.concatenate(keypoints, axis=0)
+        # ... similarly for theta, construct uniform linear bin thresholds
+        theta = np.arctan2(pts[:,0], pts[:,1])
+        theta_bins = np.linspace(-np.pi, np.pi, num=12)
 
-for point in keypoints:
-    # remove point from set of keypoints
-    pts = keypoints - point
+        # ... histgram2d is our normed log-polar histogram [1] 3.1
+        context_hist = np.histogram2d(rho.reshape(-1),
+                                      theta,
+                                      [rho_bins, theta_bins],
+                                      normed=True)
 
-    rho = np.sqrt(pts[:,0]**2+pts[:,1]**2)
-    # rho = rho/rho.max() for scale invariance?
-    rho_bins = np.logspace(0, np.log(rho.max()+1), num=6, base=np.e) # diagram looks to have 6
-    rho_bins[0] = 0
+if __name__ == "__main__":
+    # %run -i shape_context.py # to access interpreter name space
 
-    theta = np.arctan2(pts[:,0], pts[:,1])
-    theta_bins = np.linspace(-np.pi, np.pi, num=12)
+    # to peek at an image
+    # %pylab # exposes numpy, matplotlib into namespace
+    # index = 6 # index of image you want to view
+    # imshow(images.iloc[index,1:].reshape((28,28)))
+    try:
+        images
+    except NameError:
+        # if not in namespace, load train data, normalize
+        path = '../data/'
+        fname = 'train.csv'
+        images = pd.read_csv(path+fname, dtype=np.float64)
+        images.values[:, 1:] = images.values[:, 1:]/255.0
 
-    # could sort along theta for rotational invariance but I think
-    # the learner can learn representations ... there are only 6 angles to chose from
-    context_hist = np.histogram2d(rho, theta, [rho_bins, theta_bins], normed=False)
-    print(context_hist)
+    index = 6
+    image = images.iloc[index, 1:].reshape((28,28))
+
+    # extract contour points from an image, include all found contours
+    # note: as level --> 0 then number of keypoints --> |non zero contour points|
+    level = 0.8
+    keypoints = measure.find_contours(image, level=level)
+    keypoints = np.concatenate(keypoints, axis=0)
+
+    print(shape_context(keypoints))
