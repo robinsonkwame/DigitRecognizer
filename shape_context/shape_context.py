@@ -37,7 +37,6 @@ def _shape_context(args):
     theta_bins = np.linspace(-np.pi, np.pi, num=12)
 
     # ... histgram2d is our normed log-polar histogram [1] 3.1
-    # note: shape is (num-1, num-1) because these are intervals
     context_hist = np.histogram2d(rho.reshape(-1),
                                   theta,
                                   [rho_bins, theta_bins],
